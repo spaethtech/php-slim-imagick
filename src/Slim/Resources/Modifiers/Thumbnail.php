@@ -1,15 +1,16 @@
 <?php /** @noinspection PhpUnused, DuplicatedCode */
 declare(strict_types=1);
 
-namespace SpaethTech\Slim\Controllers\Imaging\Resizing;
+namespace SpaethTech\Slim\Resources\Modifiers;
 
-use Spaethtech\Slim\Controllers\Image;
 use ImagickException;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Exception\HttpNotFoundException;
+use SpaethTech\Slim\Resources\ImageResource;
+
 //use SpaethTech\Slim\Controllers\Images\Rendering;
 
 /**
@@ -35,7 +36,7 @@ trait Thumbnail
     public function thumb(Request $request, Response $response, string $value): Response
     {
         return $this->render($request, $response, __FUNCTION__,
-            function(Image $image, $width, $height)
+            function(ImageResource $image, $width, $height)
             {
                 $image->imagick->cropThumbnailImage($width, $height);
             }

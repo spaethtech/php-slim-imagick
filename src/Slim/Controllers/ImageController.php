@@ -10,11 +10,8 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Exception\HttpNotFoundException;
 use Slim\Routing\RouteContext;
-use SpaethTech\Slim\Controllers\Imaging\Resizing\Dimension;
-use SpaethTech\Slim\Controllers\Imaging\Resizing\Scale;
-use SpaethTech\Slim\Controllers\Imaging\Resizing\Thumbnail;
-
-//use function App\Controllers\Images\get_called_method;
+use SpaethTech\Slim\Resources\ImageResource;
+use SpaethTech\Slim\Resources\Resource;
 
 /**
  * Class ImageController
@@ -24,137 +21,97 @@ use SpaethTech\Slim\Controllers\Imaging\Resizing\Thumbnail;
  */
 class ImageController extends Controller
 {
-    public const ROUTE_PATTERN      = "/{path:.*}/{file:.*}.{ext:gif|jpg|jpeg|png}";
+    public const ROUTE_PATTERN = "/{path:.*}/{file:.*}.{ext:gif|jpg|jpeg|png}";
 
-    protected const REGEX_W_H       = "/^(?<width>[0-9]+)(?:x(?<height>[0-9]+))?$/";
-    protected const REGEX_W_H_X_Y   = "/^(?<width>[0-9]+)(?:,(?<height>[0-9]+))?(?:,(?<x>[0-9]+))?(?:,(?<y>[0-9]+))?$/";
-
-    use Dimension;
-    use Scale;
-    use Thumbnail;
+    #region Getters
 
     /**
      * @param Request $request
-     * @param Response $response
-     * @param string $path
-     * @param string $file
-     * @param string $ext
      *
-     * @return Response
-     * @throws ContainerExceptionInterface
+     * @return Resource
      * @throws HttpNotFoundException
      * @throws ImagickException
+     * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function __invoke(Request $request, Response $response, string $path, string $file, string $ext): Response
+    protected function getResource(Request $request): Resource
     {
-        // Create a new Image object.
-        $image = new Image($this->container, "$path/$file.$ext");
+        $args = RouteContext::fromRequest($request)->getRoute()->getArguments();
+        $params = $request->getQueryParams();
 
-        // IF the file does not exist, THEN return a 404!
-        if(!$image->exists())
-            throw new HttpNotFoundException($request);
+        if (!array_key_exists("path", $args) ||
+            !array_key_exists("file", $args) ||
+            !array_key_exists("ext", $args))
+            throw new HttpNotFoundException($request,
+                "Something unexpected happened while routing with ".__CLASS__);
 
-        foreach($request->getQueryParams() as $key => $value)
-        {
-            if (method_exists($this, $key))
-                return $this->$key($request, $response, $value);
-        }
+        $path = $args["path"];
+        $file = $args["file"];
+        $ext = $args["ext"];
 
-        return $image->render($response);
+        return new ImageResource($this, "$path/$file.$ext", $params);
     }
 
+    #endregion
 
     /**
-     * Renders an image given an optional callback for alteration.
-     *
-     * @param Request $request       The Request object.
-     * @param Response $response     The Response object.
-     * @param callable|null $func    A callback for image manipulation.
-     * @param mixed ...$params       Any parameters to pass to the callback.
+     * @param Request $request The Request object.
+     * @param Response $response The Response object.
      *
      * @return Response
      *
-     * @throws ContainerExceptionInterface
      * @throws HttpNotFoundException
      * @throws ImagickException
-     * @throws NotFoundExceptionInterface
-     *
      */
-    public function render(Request $request, Response $response, callable $func = null, ...$params): Response
+    public function render(Request $request, Response $response): Response
     {
-        /**
-         * Defined in ImageController::ROUTE_PATTERN
-         * @var string $path        The path to the requested image.
-         * @var string $file        The filename of the requested image.
-         * @var string $ext         The extension of the requested image.
-         */
-        extract(RouteContext::fromRequest($request)->getRoute()->getArguments());
-
-        // Create a new Image object.
-        $image = new Image($this->container, "$path/$file.$ext");
+        // NOTE: The following will prevent a file from being loaded from the
+        // cache if the original has been deleted.
 
         // IF the file does not exist, THEN return a 404!
-        if(!$image->exists())
+        if(!$this->resource->exists())
             throw new HttpNotFoundException($request);
 
-        //$method = get_called_method();
-        $method = Controller::getCallingMethod();
-
-//        // IF no resizing is required...
-//        if ($image->isCorrectSize(...$params))
-//        {
-//            // ...THEN get the original file's MIME type and actual data.
-//            return $image->render($response);
-//        }
-        // ...OTHERWISE, IF a cached version of the correct size exists...
-        if ($image->cachedExists($method, ...$params))
+        // IF a cached version exists...
+        if ($this->resource->cached())
         {
-            // ...THEN get the cached file's MIME type and actual data.
-            //return $image->cachedRender($response, $method, $width, $height);
-            return $image->renderCached($response, $method, ...$params);
+            // ...THEN render the cached file!
+            return $this->resource->render($response, TRUE);
         }
-        // ...OTHERWISE, we need to resize the image on the fly...
         else
         {
+            // ...OTHERWISE, we need to resize the image on the fly...
+            $alterations = [];
+
+            // Loop through each query parameter
+            foreach($request->getQueryParams() as $key => $value)
+            {
+                if (method_exists($this->resource, $key))
+                    $alterations[] = $this->resource->$key($value);
+            }
+
             $altered = false;
 
-            // IF a callback is provided, THEN pass the image for manipulation.
-            if ($func !== null)
-                $altered = $func($image, ...$params);
+            foreach($alterations as $alteration)
+                if ($alteration)
+                {
+                    $altered = TRUE;
+                    break;
+                }
 
             if(!$altered)
-                return $image->render($response);
+                return $this->resource->render($response);
 
-            // Save the image to the cache folder for caching.
-            $image->save($method, ...$params);
+            // Save the altered image to the cache folder for followup requests.
+            $this->resource->cache();
 
             // AND return the new image content!
-            return $image
-                ->renderCached($response, $method, ...$params)
+            return $this->resource
+                ->render($response, TRUE)
                 ->withStatus(201, "Created");
         }
 
     }
-
-
-//    protected function image(Response $response, string $path): Response
-//    {
-//
-//    }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
