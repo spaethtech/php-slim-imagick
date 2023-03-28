@@ -1,0 +1,27 @@
+{
+    "name": "spaethtech/php-slim-imagick",
+    "description": "An Image Controller for Slim PHP using ImageMagick.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ryan Spaeth",
+            "email": "rspaeth@spaethtech.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "ext-fileinfo": "*",
+        "ext-json": "*",
+        "ext-imagick": "*",
+        "slim/slim": "~4.9.0",
+        "slim/psr7": "~1.3.0",
+        "spaethtech/php-slim": "@dev"
+    },
+    "autoload": {
+        "psr-4": {
+            "SpaethTech\\": "./src/"
+        }
+    }
+
+}
